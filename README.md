@@ -11,7 +11,8 @@ Simple status bar for dwm written in rust. Easy to use.
 For installation just use
 ```
 $ cd RustyStatusBar
-$ su -c "make install"
+$ make
+$ sudo make install
 ```
 and then put it into your dwm start script
 ```
