@@ -2,10 +2,11 @@ use std::{
 	ptr,
 	fs::File,
 	io::Read,
+	env::args,
 	thread::sleep,
 	time::Duration,
 	mem::MaybeUninit,
-	ffi::{CString, CStr, c_char, c_ushort, c_uint},
+	ffi::{CString, CStr, c_char, c_ushort, c_uint, c_ulong},
 };
 use x11::xlib;
 use chrono::Local;
@@ -39,82 +40,104 @@ extern "C" {
 	) -> bool;
 }
 
-fn xsetroot<T: AsRef<str>>(new_name: T) {
-	let name = CString::new(new_name.as_ref()).unwrap();
-
-	unsafe {
-		let display = xlib::XOpenDisplay(ptr::null());
-		let screen = xlib::XDefaultScreen(display);
-		let window = xlib::XRootWindow(display, screen);
-
-		xlib::XStoreName(display, window, name.as_ptr());
-
-		xlib::XCloseDisplay(display);
-	};
+struct Bar {
+	display: *mut xlib::Display,
+	window: c_ulong,
+	looped: bool,
 }
 
-fn lang() -> String {
-	let (kl, s) = unsafe {
-		let display = xlib::XOpenDisplay(ptr::null());
+impl Bar {
+	pub fn new(looped: bool) -> Self {
+		let display = unsafe { xlib::XOpenDisplay(ptr::null()) };
+		let window = unsafe { xlib::XRootWindow(display, xlib::XDefaultScreen(display)) };
 
-		let mut state: MaybeUninit<xlib::_XkbStateRec> = MaybeUninit::uninit();
-		let _ = xlib::XkbGetState(display, XkbUseCoreKbd, state.as_mut_ptr());
+		Self {
+			display: display,
+			window: window,
+			looped: looped,
+		}
+	}
 
-		let mut vd: MaybeUninit<_XkbRF_VarDefs> = MaybeUninit::uninit();
-		let _ = XkbRF_GetNamesProp(display, ptr::null(), vd.as_mut_ptr());
+	pub fn run(&self) {
+		if self.looped {
+			loop {
+				self.statusbar();
+				sleep(ONE_SEC);
+			};
+		} else {
+			self.statusbar();
+		}
 
-		xlib::XCloseDisplay(display);
+		self.close_display();
+	}
 
-		(CStr::from_ptr(vd.assume_init().layout).to_str().unwrap(), state.assume_init().group)
-	};
+	fn xsetroot<T: AsRef<str>>(&self, new_name: T) {
+		let name = CString::new(new_name.as_ref()).unwrap();
+		unsafe { xlib::XStoreName(self.display, self.window, name.as_ptr()) };
+	}
 
-	kl.split(",")
-		.collect::<Vec<&str>>()[s as usize]
-		.to_string()
+	fn lang(&self) -> String {
+		let (kl, s) = unsafe {
+			let mut state: MaybeUninit<xlib::_XkbStateRec> = MaybeUninit::uninit();
+			let _ = xlib::XkbGetState(self.display, XkbUseCoreKbd, state.as_mut_ptr());
+
+			let mut vd: MaybeUninit<_XkbRF_VarDefs> = MaybeUninit::uninit();
+			let _ = XkbRF_GetNamesProp(self.display, ptr::null(), vd.as_mut_ptr());
+
+			(CStr::from_ptr(vd.assume_init().layout).to_str().unwrap(), state.assume_init().group)
+		};
+
+		kl.split(",")
+			.collect::<Vec<&str>>()[s as usize]
+			.to_string()
+	}
+
+	fn close_display(&self) {
+		unsafe { xlib::XCloseDisplay(self.display) };
+	}
+
+	fn temp(&self) -> String {
+		let mut temp = String::new();
+		File::open("/sys/class/hwmon/hwmon0/temp1_input")
+			.unwrap()
+			.read_to_string(&mut temp)
+			.unwrap();
+
+		format!("+{:.2}.0°C", &temp[..2])
+	}
+
+	fn statusbar(&self) {
+		let lang = self.lang().to_uppercase();
+
+		let datetime = Local::now();
+		let date = &datetime.format("%d.%m.%y");
+		let time = &datetime.format("%H:%M:%S");
+
+		let temp = self.temp();
+
+		let bar = format!("    | {temp} | {lang} | {date} | {time} |   ");
+		self.xsetroot(&bar);
+	}
 }
 
-fn temp() -> String {
-	let mut temp = String::new();
-	File::open("/sys/class/hwmon/hwmon0/temp1_input")
-		.unwrap()
-		.read_to_string(&mut temp)
-		.unwrap();
+fn cli() -> bool {
+	let args: Vec<String> = args().collect();
 
-	format!("+{:.2}.0°C", &temp[..2])
-}
-
-fn dwm_statusbar() {
-	let lang = lang().to_uppercase();
-
-	let datetime = Local::now();
-	let date = &datetime.format("%d.%m.%y");
-	let time = &datetime.format("%H:%M:%S");
-
-	let temp = temp();
-
-	let bar = format!("    | {temp} | {lang} | {date} | {time} |   ");
-	xsetroot(&bar);
-}
-
-fn cli(args: Vec<String>) {
 	match args.len() {
-		1 => dwm_statusbar(),
+		1 => false,
 		2 => {
 			match args[1].as_ref() {
 				"-l" | "--loop" => {
-					loop {
-						dwm_statusbar();
-						sleep(ONE_SEC);
-					};
+					return true;
 				}
 				_ => panic!("Undifined flag"),
 			};
 		}
-		_ => panic!("Needed only one or less flags"),
-	};
+		_ => panic!("Undifined extra flag/s"),
+	}
 }
 
 fn main() {
-	let args: Vec<String> = std::env::args().collect();
-	cli(args);
+	Bar::new(cli())
+		.run();
 }
