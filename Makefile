@@ -3,6 +3,6 @@ PREFIX = /usr
 all:
 	cargo build --release
 
-install: all
+install:
 	mkdir -p ${PREFIX}/bin
-	cp ./target/release/rusty_status_bar ${PREFIX}/bin
+	cp -f ./target/release/rusty_status_bar ${PREFIX}/bin
