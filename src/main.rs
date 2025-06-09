@@ -52,9 +52,9 @@ impl Bar {
 		let window = unsafe { xlib::XRootWindow(display, xlib::XDefaultScreen(display)) };
 
 		Self {
-			display: display,
-			window: window,
-			looped: looped,
+			display,
+			window,
+			looped
 		}
 	}
 
