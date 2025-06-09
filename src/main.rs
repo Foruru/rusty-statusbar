@@ -128,12 +128,12 @@ fn cli() -> bool {
 		2 => {
 			match args[1].as_ref() {
 				"-l" | "--loop" => {
-					return true;
+					true
 				}
 				_ => panic!("Undifined flag"),
-			};
+			}
 		}
-		_ => panic!("Undifined extra flag/s"),
+		_ => panic!("Undifined extra flag/s")
 	}
 }
 
