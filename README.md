@@ -8,11 +8,9 @@ Simple status bar for dwm written in rust. Easy to use.
    - Keyboard layout
 
 ### Installation
-For installation just use
 ```
 $ cd RustyStatusBar
-$ make
-$ sudo make install
+$ cargo install --path .
 ```
 and then put it into your dwm start script
 ```
