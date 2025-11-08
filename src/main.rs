@@ -1,15 +1,15 @@
+use chrono::Local;
 use std::{
-    ptr,
+    env::args,
+    ffi::{c_char, c_uint, c_ulong, c_ushort, CStr, CString},
     fs::File,
     io::Read,
-    env::args,
+    mem::MaybeUninit,
+    ptr,
     thread::sleep,
     time::Duration,
-    mem::MaybeUninit,
-    ffi::{CString, CStr, c_char, c_ushort, c_uint, c_ulong},
 };
 use x11::xlib;
-use chrono::Local;
 
 static ONE_SEC: Duration = Duration::from_secs(1);
 
@@ -33,11 +33,7 @@ type XkbRF_VarDefsPtr = *mut _XkbRF_VarDefs;
 static XkbUseCoreKbd: c_uint = 0x0100;
 
 extern "C" {
-    fn XkbRF_GetNamesProp(
-        _3: *mut xlib::Display,
-        _2: *const c_char,
-        _1: XkbRF_VarDefsPtr
-    ) -> bool;
+    fn XkbRF_GetNamesProp(_3: *mut xlib::Display, _2: *const c_char, _1: XkbRF_VarDefsPtr) -> bool;
 }
 
 struct Bar {
@@ -54,7 +50,7 @@ impl Bar {
         Self {
             display,
             window,
-            looped
+            looped,
         }
     }
 
@@ -63,7 +59,7 @@ impl Bar {
             loop {
                 self.statusbar();
                 sleep(ONE_SEC);
-            };
+            }
         } else {
             self.statusbar();
         }
@@ -84,12 +80,13 @@ impl Bar {
             let mut vd: MaybeUninit<_XkbRF_VarDefs> = MaybeUninit::uninit();
             let _ = XkbRF_GetNamesProp(self.display, ptr::null(), vd.as_mut_ptr());
 
-            (CStr::from_ptr(vd.assume_init().layout).to_str().unwrap(), state.assume_init().group)
+            (
+                CStr::from_ptr(vd.assume_init().layout).to_str().unwrap(),
+                state.assume_init().group,
+            )
         };
 
-        kl.split(",")
-            .collect::<Vec<&str>>()[s as usize]
-            .to_string()
+        kl.split(",").collect::<Vec<&str>>()[s as usize].to_string()
     }
 
     fn close_display(&self) {
@@ -125,19 +122,14 @@ fn cli() -> bool {
 
     match args.len() {
         1 => false,
-        2 => {
-            match args[1].as_ref() {
-                "-l" | "--loop" => {
-                    true
-                }
-                _ => panic!("Undifined flag"),
-            }
-        }
-        _ => panic!("Undifined extra flag/s")
+        2 => match args[1].as_ref() {
+            "-l" | "--loop" => true,
+            _ => panic!("Undifined flag"),
+        },
+        _ => panic!("Undifined extra flag/s"),
     }
 }
 
 fn main() {
-    Bar::new(cli())
-        .run();
+    Bar::new(cli()).run();
 }
