@@ -2,17 +2,35 @@
 Simple status bar for dwm written in rust. Easy to use.
 
 ## What it can show
-   - Time
-   - Date
-   - Temperature
-   - Keyboard layout
+ - Time
+ - Date
+ - CPU temperature
+ - Keyboard layout
+
+## Usage
+
+### Dependencies
+ - rust
+ - cargo
+ - libxcb1-dev
 
 ### Installation
 ```
-$ cd RustyStatusBar
-$ cargo install --path .
+cd rusty-statusbar
+cargo install --path .
 ```
 and then put it into your dwm start script
 ```
-rusty_status_bar --loop &
+rusty-statusbar --loop &
+```
+
+### Command-line options
+```
+Usage: rusty-statusbar [OPTIONS]
+
+Options:
+    -r, --refresh-rate <time>
+        Set refresh rate in milliseconds, value must be an integer.
+    -l, --loop
+        Loop program.
 ```
