@@ -1,7 +1,7 @@
 use chrono::Local;
 use std::{
     env::args,
-    ffi::{c_char, c_uint, c_ulong, c_ushort, CStr, CString},
+    ffi::{c_char, c_int, c_uchar, c_uint, c_ulong, c_ushort, CStr, CString},
     fs::File,
     io::Read,
     mem::MaybeUninit,
@@ -9,11 +9,27 @@ use std::{
     thread::sleep,
     time::Duration,
 };
-use x11::xlib;
 
 static ONE_SEC: Duration = Duration::from_secs(1);
 
-#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+struct _XkbStateRec {
+    pub group: c_uchar,
+    pub base_group: c_ushort,
+    pub latched_group: c_ushort,
+    pub locked_group: c_uchar,
+    pub mods: c_uchar,
+    pub base_mods: c_uchar,
+    pub latched_mods: c_uchar,
+    pub locked_mods: c_uchar,
+    pub compat_state: c_uchar,
+    pub grab_mods: c_uchar,
+    pub compat_grab_mods: c_uchar,
+    pub lookup_mods: c_uchar,
+    pub compat_lookup_mods: c_uchar,
+    pub ptr_buttons: c_ushort,
+}
+
 #[repr(C)]
 pub struct _XkbRF_VarDefs {
     pub model: *mut c_char,
@@ -26,6 +42,10 @@ pub struct _XkbRF_VarDefs {
     pub extra_values: *mut c_char,
 }
 
+enum _XDisplay {}
+
+type Display = _XDisplay;
+type XkbStatePtr = *mut _XkbStateRec;
 #[allow(non_camel_case_types)]
 type XkbRF_VarDefsPtr = *mut _XkbRF_VarDefs;
 
@@ -33,11 +53,17 @@ type XkbRF_VarDefsPtr = *mut _XkbRF_VarDefs;
 static XkbUseCoreKbd: c_uint = 0x0100;
 
 extern "C" {
-    fn XkbRF_GetNamesProp(_3: *mut xlib::Display, _2: *const c_char, _1: XkbRF_VarDefsPtr) -> bool;
+    fn XOpenDisplay(_1: *const c_char) -> *mut Display;
+    fn XRootWindow(_2: *mut Display, _1: c_int) -> c_ulong;
+    fn XDefaultScreen(_1: *mut Display) -> c_int;
+    fn XStoreName(_3: *mut Display, _2: c_ulong, _1: *const c_char) -> c_int;
+    fn XCloseDisplay(_1: *mut Display) -> c_int;
+    fn XkbGetState(_3: *mut Display, _2: c_uint, _1: XkbStatePtr) -> c_int;
+    fn XkbRF_GetNamesProp(_3: *mut Display, _2: *const c_char, _1: XkbRF_VarDefsPtr) -> bool;
 }
 
 struct X11Bar {
-    display: *mut xlib::Display,
+    display: *mut Display,
     window: c_ulong,
     refresh_rate: Duration,
     is_looped: bool,
@@ -45,8 +71,8 @@ struct X11Bar {
 
 impl Default for X11Bar {
     fn default() -> Self {
-        let display = unsafe { xlib::XOpenDisplay(ptr::null()) };
-        let window = unsafe { xlib::XRootWindow(display, xlib::XDefaultScreen(display)) };
+        let display = unsafe { XOpenDisplay(ptr::null()) };
+        let window = unsafe { XRootWindow(display, XDefaultScreen(display)) };
         let refresh_rate = ONE_SEC;
         let is_looped = false;
 
@@ -72,11 +98,11 @@ impl X11Bar {
 
     fn xsetroot<T: AsRef<str>>(&self, new_name: T) {
         let name = CString::new(new_name.as_ref()).unwrap();
-        unsafe { xlib::XStoreName(self.display, self.window, name.as_ptr()) };
+        unsafe { XStoreName(self.display, self.window, name.as_ptr()) };
     }
 
     fn close_display(&self) {
-        unsafe { xlib::XCloseDisplay(self.display) };
+        unsafe { XCloseDisplay(self.display) };
     }
 }
 
@@ -87,7 +113,7 @@ trait StatusBar {
 impl StatusBar for X11Bar {
     fn statusbar(&self) -> String {
         let mut temp = String::new();
-        let temp_file_path = "/sys/class/hwmon/hwmon0/temp1_input ";
+        let temp_file_path = "/sys/class/hwmon/hwmon0/temp1_input";
         File::open(&temp_file_path)
             .unwrap_or_else(|_| panic!("Can not open file {}", temp_file_path))
             .read_to_string(&mut temp)
@@ -95,8 +121,8 @@ impl StatusBar for X11Bar {
         temp = format!("+{:.2}.0°C", &temp[..2]);
 
         let (kl, s) = unsafe {
-            let mut state: MaybeUninit<xlib::_XkbStateRec> = MaybeUninit::uninit();
-            let _ = xlib::XkbGetState(self.display, XkbUseCoreKbd, state.as_mut_ptr());
+            let mut state: MaybeUninit<_XkbStateRec> = MaybeUninit::uninit();
+            let _ = XkbGetState(self.display, XkbUseCoreKbd, state.as_mut_ptr());
 
             let mut vd: MaybeUninit<_XkbRF_VarDefs> = MaybeUninit::uninit();
             let _ = XkbRF_GetNamesProp(self.display, ptr::null(), vd.as_mut_ptr());
