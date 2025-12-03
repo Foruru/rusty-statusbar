@@ -36,32 +36,35 @@ extern "C" {
     fn XkbRF_GetNamesProp(_3: *mut xlib::Display, _2: *const c_char, _1: XkbRF_VarDefsPtr) -> bool;
 }
 
-struct Bar {
+struct X11Bar {
     display: *mut xlib::Display,
     window: c_ulong,
-    looped: bool,
+    refresh_rate: Duration,
+    is_looped: bool,
 }
 
-impl Bar {
-    pub fn new(looped: bool) -> Self {
+impl Default for X11Bar {
+    fn default() -> Self {
         let display = unsafe { xlib::XOpenDisplay(ptr::null()) };
         let window = unsafe { xlib::XRootWindow(display, xlib::XDefaultScreen(display)) };
+        let refresh_rate = ONE_SEC;
+        let is_looped = false;
 
         Self {
             display,
             window,
-            looped,
+            refresh_rate,
+            is_looped,
         }
     }
+}
 
+impl X11Bar {
     pub fn run(&self) {
-        if self.looped {
-            loop {
-                self.statusbar();
-                sleep(ONE_SEC);
-            }
-        } else {
-            self.statusbar();
+        self.xsetroot(self.statusbar());
+        while self.is_looped {
+            sleep(self.refresh_rate);
+            self.xsetroot(self.statusbar());
         }
 
         self.close_display();
@@ -72,7 +75,25 @@ impl Bar {
         unsafe { xlib::XStoreName(self.display, self.window, name.as_ptr()) };
     }
 
-    fn lang(&self) -> String {
+    fn close_display(&self) {
+        unsafe { xlib::XCloseDisplay(self.display) };
+    }
+}
+
+trait StatusBar {
+    fn statusbar(&self) -> String;
+}
+
+impl StatusBar for X11Bar {
+    fn statusbar(&self) -> String {
+        let mut temp = String::new();
+        let temp_file_path = "/sys/class/hwmon/hwmon0/temp1_input ";
+        File::open(&temp_file_path)
+            .unwrap_or_else(|_| panic!("Can not open file {}", temp_file_path))
+            .read_to_string(&mut temp)
+            .unwrap();
+        temp = format!("+{:.2}.0°C", &temp[..2]);
+
         let (kl, s) = unsafe {
             let mut state: MaybeUninit<xlib::_XkbStateRec> = MaybeUninit::uninit();
             let _ = xlib::XkbGetState(self.display, XkbUseCoreKbd, state.as_mut_ptr());
@@ -86,50 +107,45 @@ impl Bar {
             )
         };
 
-        kl.split(",").collect::<Vec<&str>>()[s as usize].to_string()
-    }
-
-    fn close_display(&self) {
-        unsafe { xlib::XCloseDisplay(self.display) };
-    }
-
-    fn temp(&self) -> String {
-        let mut temp = String::new();
-        File::open("/sys/class/hwmon/hwmon0/temp1_input")
-            .unwrap()
-            .read_to_string(&mut temp)
-            .unwrap();
-
-        format!("+{:.2}.0°C", &temp[..2])
-    }
-
-    fn statusbar(&self) {
-        let lang = self.lang().to_uppercase();
+        let lang = kl.split(",").collect::<Vec<&str>>()[s as usize]
+            .to_string()
+            .to_uppercase();
 
         let datetime = Local::now();
         let date = &datetime.format("%d.%m.%y");
         let time = &datetime.format("%H:%M:%S");
 
-        let temp = self.temp();
-
-        let bar = format!("    | {temp} | {lang} | {date} | {time} |   ");
-        self.xsetroot(&bar);
+        format!("    | {temp} | {lang} | {date} | {time} |   ")
     }
 }
 
-fn cli() -> bool {
+fn cli() -> X11Bar {
     let args: Vec<String> = args().collect();
+    let mut bar = X11Bar::default();
 
-    match args.len() {
-        1 => false,
-        2 => match args[1].as_ref() {
-            "-l" | "--loop" => true,
-            _ => panic!("Undifined flag"),
-        },
-        _ => panic!("Undifined extra flag/s"),
+    if args.len() < 2 {
+        return bar;
     }
+
+    for arg in args.iter().enumerate() {
+        match arg.1.as_ref() {
+            "-r" | "--refresh-rate" => {
+                bar.refresh_rate =
+                    Duration::from_millis(args[arg.0 + 1].parse::<u64>().unwrap_or_else(|_| {
+                        panic!(
+                            ">>> {} <<<\nInvalid syntax: value of refresh rate must be an integer",
+                            args[arg.0 + 1]
+                        )
+                    }))
+            }
+            "-l" | "--loop" => bar.is_looped = true,
+            _ => (),
+        }
+    }
+
+    bar
 }
 
 fn main() {
-    Bar::new(cli()).run();
+    cli().run();
 }
