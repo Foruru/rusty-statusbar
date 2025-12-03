@@ -5,6 +5,7 @@ use std::{
     fs::File,
     io::Read,
     mem::MaybeUninit,
+    process::abort,
     ptr,
     thread::sleep,
     time::Duration,
@@ -165,6 +166,20 @@ fn cli() -> X11Bar {
                     }))
             }
             "-l" | "--loop" => bar.is_looped = true,
+            "-h" | "--help" => {
+                println!(
+                    "Usage: rusty-statusbar [OPTIONS]
+
+Options:
+    -h, --help
+        Display this help message and exit.
+    -r, --refresh-rate <time>
+        Set refresh rate in milliseconds, value must be an integer.
+    -l, --loop
+        Loop program."
+                );
+                abort();
+            }
             _ => (),
         }
     }

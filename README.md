@@ -29,6 +29,8 @@ rusty-statusbar --loop &
 Usage: rusty-statusbar [OPTIONS]
 
 Options:
+    -h, --help
+        Display this help message and exit.
     -r, --refresh-rate <time>
         Set refresh rate in milliseconds, value must be an integer.
     -l, --loop
